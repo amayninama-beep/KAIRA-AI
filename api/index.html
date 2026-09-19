@@ -1858,7 +1858,793 @@ window.KAIRA = {
         getLocalMemories
 
 };
+<script>
 
-    </script>
+/* =====================================================
+   KAIRA VISION + TOOLS — PART 3
+===================================================== */
+
+let currentImage = null;
+let cameraStream = null;
+
+
+/* =====================================================
+   CAMERA OVERLAY
+===================================================== */
+
+const cameraOverlay =
+    document.createElement("div");
+
+cameraOverlay.id =
+    "cameraOverlay";
+
+cameraOverlay.style.cssText = `
+    display:none;
+    position:fixed;
+    inset:0;
+    z-index:100;
+    background:#020308;
+    padding:18px;
+    flex-direction:column;
+    gap:12px;
+`;
+
+
+cameraOverlay.innerHTML = `
+
+    <div style="
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+    ">
+
+        <strong style="
+            font-size:18px;
+        ">
+            KAIRA Vision
+        </strong>
+
+        <button
+            id="closeCamera"
+            style="
+                width:40px;
+                height:40px;
+                border:0;
+                border-radius:50%;
+                background:rgba(255,255,255,.1);
+                color:white;
+                font-size:20px;
+            "
+        >
+            ×
+        </button>
+
+    </div>
+
+
+    <div style="
+        flex:1;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        overflow:hidden;
+        border-radius:20px;
+        background:#080b14;
+    ">
+
+        <video
+            id="cameraVideo"
+            autoplay
+            playsinline
+            style="
+                width:100%;
+                height:100%;
+                object-fit:contain;
+                border-radius:20px;
+            "
+        ></video>
+
+    </div>
+
+
+    <button
+        id="captureImage"
+        style="
+            height:52px;
+            border:0;
+            border-radius:16px;
+            background:linear-gradient(135deg,#315cff,#6337e8);
+            color:white;
+            font-size:16px;
+            font-weight:bold;
+        "
+    >
+        📸 Capture & Analyze
+    </button>
+
+`;
+
+
+document.body.appendChild(
+    cameraOverlay
+);
+
+
+const cameraVideo =
+    document.getElementById(
+        "cameraVideo"
+    );
+
+const closeCamera =
+    document.getElementById(
+        "closeCamera"
+    );
+
+const captureImage =
+    document.getElementById(
+        "captureImage"
+    );
+
+
+/* =====================================================
+   OPEN CAMERA
+===================================================== */
+
+async function openCamera() {
+
+    try {
+
+        cameraOverlay.style.display =
+            "flex";
+
+
+        cameraStream =
+            await navigator.mediaDevices.getUserMedia({
+
+                video: {
+                    facingMode: "environment"
+                },
+
+                audio: false
+
+            });
+
+
+        cameraVideo.srcObject =
+            cameraStream;
+
+
+    } catch (error) {
+
+        cameraOverlay.style.display =
+            "none";
+
+
+        addMessage(
+            "📷 Camera permission नहीं मिली। Browser settings में camera permission allow करें।",
+            "ai"
+        );
+
+    }
+
+}
+
+
+/* =====================================================
+   CLOSE CAMERA
+===================================================== */
+
+function stopCamera() {
+
+    if (cameraStream) {
+
+        cameraStream
+            .getTracks()
+            .forEach(
+                track => track.stop()
+            );
+
+        cameraStream = null;
+    }
+
+
+    cameraVideo.srcObject =
+        null;
+
+
+    cameraOverlay.style.display =
+        "none";
+}
+
+
+closeCamera.addEventListener(
+    "click",
+    stopCamera
+);
+
+
+cameraBtn.onclick =
+    openCamera;
+
+
+/* =====================================================
+   CAPTURE IMAGE
+===================================================== */
+
+captureImage.addEventListener(
+    "click",
+    async function() {
+
+        if (!cameraStream) {
+            return;
+        }
+
+
+        const canvas =
+            document.createElement(
+                "canvas"
+            );
+
+
+        canvas.width =
+            cameraVideo.videoWidth;
+
+        canvas.height =
+            cameraVideo.videoHeight;
+
+
+        const ctx =
+            canvas.getContext("2d");
+
+
+        ctx.drawImage(
+            cameraVideo,
+            0,
+            0,
+            canvas.width,
+            canvas.height
+        );
+
+
+        currentImage =
+            canvas.toDataURL(
+                "image/jpeg",
+                0.82
+            );
+
+
+        stopCamera();
+
+
+        addMessage(
+            "📷 Image capture हो गई। KAIRA Vision analysis शुरू कर रहा है...",
+            "user"
+        );
+
+
+        await analyzeImage(
+            currentImage
+        );
+
+    }
+);
+
+
+/* =====================================================
+   IMAGE ANALYSIS
+===================================================== */
+
+async function analyzeImage(
+    imageData
+) {
+
+    showThinking();
+
+
+    try {
+
+        const data =
+            await apiRequest({
+
+                action: "chat",
+
+                userId:
+                    KAIRA_USER_ID,
+
+                message:
+                    "इस image को ध्यान से analyze करो और जो दिखाई दे रहा है उसे स्पष्ट रूप से बताओ।",
+
+                image:
+                    imageData,
+
+                history:
+                    conversation,
+
+                memories:
+                    getLocalMemories(),
+
+                weather:
+                    weatherData
+
+            });
+
+
+        hideThinking();
+
+
+        addMessage(
+            data.reply ||
+            "मैं image को analyze नहीं कर पाया।",
+            "ai"
+        );
+
+
+    } catch (error) {
+
+        hideThinking();
+
+
+        addMessage(
+            "⚠️ Vision error: " +
+            (
+                error?.message ||
+                "Image analysis failed."
+            ),
+            "ai"
+        );
+
+    }
+
+}
+
+
+/* =====================================================
+   SCREEN VISION
+===================================================== */
+
+async function captureScreen() {
+
+    try {
+
+        if (
+            !navigator.mediaDevices ||
+            !navigator.mediaDevices.getDisplayMedia
+        ) {
+
+            addMessage(
+                "🖥️ इस browser में Screen Share उपलब्ध नहीं है।",
+                "ai"
+            );
+
+            return;
+        }
+
+
+        const stream =
+            await navigator.mediaDevices.getDisplayMedia({
+
+                video: true,
+
+                audio: false
+
+            });
+
+
+        const video =
+            document.createElement(
+                "video"
+            );
+
+
+        video.srcObject =
+            stream;
+
+        video.muted =
+            true;
+
+        video.playsInline =
+            true;
+
+
+        await video.play();
+
+
+        await new Promise(
+            resolve =>
+                setTimeout(
+                    resolve,
+                    700
+                )
+        );
+
+
+        const canvas =
+            document.createElement(
+                "canvas"
+            );
+
+
+        canvas.width =
+            video.videoWidth;
+
+        canvas.height =
+            video.videoHeight;
+
+
+        const ctx =
+            canvas.getContext("2d");
+
+
+        ctx.drawImage(
+            video,
+            0,
+            0,
+            canvas.width,
+            canvas.height
+        );
+
+
+        const image =
+            canvas.toDataURL(
+                "image/jpeg",
+                0.80
+            );
+
+
+        stream
+            .getTracks()
+            .forEach(
+                track =>
+                    track.stop()
+            );
+
+
+        addMessage(
+            "🖥️ Screen capture हो गया। KAIRA इसे analyze कर रहा है...",
+            "user"
+        );
+
+
+        await analyzeImage(
+            image
+        );
+
+
+    } catch (error) {
+
+        addMessage(
+            "🖥️ Screen sharing cancel या unavailable है।",
+            "ai"
+        );
+
+    }
+
+}
+
+
+screenBtn.onclick =
+    captureScreen;
+
+
+/* =====================================================
+   FILE IMAGE SUPPORT
+===================================================== */
+
+const imageInput =
+    document.createElement(
+        "input"
+    );
+
+
+imageInput.type =
+    "file";
+
+imageInput.accept =
+    "image/*";
+
+imageInput.style.display =
+    "none";
+
+
+document.body.appendChild(
+    imageInput
+);
+
+
+imageInput.addEventListener(
+    "change",
+    function() {
+
+        const file =
+            imageInput.files?.[0];
+
+
+        if (!file) {
+            return;
+        }
+
+
+        const reader =
+            new FileReader();
+
+
+        reader.onload =
+            async function(event) {
+
+                const image =
+                    event.target.result;
+
+
+                await analyzeImage(
+                    image
+                );
+
+            };
+
+
+        reader.readAsDataURL(
+            file
+        );
+
+    }
+);
+
+
+/* =====================================================
+   LONG PRESS / EXTRA VISION ACCESS
+===================================================== */
+
+cameraBtn.addEventListener(
+    "contextmenu",
+    function(event) {
+
+        event.preventDefault();
+
+        imageInput.click();
+
+    }
+);
+
+
+/* =====================================================
+   TOOL ARCHITECTURE
+===================================================== */
+
+const KAIRA_TOOLS = {
+
+    calculator: {
+
+        name:
+            "Calculator",
+
+        enabled:
+            true
+
+    },
+
+
+    weather: {
+
+        name:
+            "Weather",
+
+        enabled:
+            true
+
+    },
+
+
+    web: {
+
+        name:
+            "Live Web",
+
+        enabled:
+            false
+
+    },
+
+
+    trading: {
+
+        name:
+            "Trading Analysis",
+
+        enabled:
+            false
+
+    },
+
+
+    files: {
+
+        name:
+            "Files",
+
+        enabled:
+            false
+
+    },
+
+
+    computer: {
+
+        name:
+            "Computer Assistant",
+
+        enabled:
+            false
+
+    }
+
+};
+
+
+/* =====================================================
+   TOOL PANEL
+===================================================== */
+
+toolsBtn.addEventListener(
+    "click",
+    function() {
+
+        const names =
+            Object.values(
+                KAIRA_TOOLS
+            )
+            .map(
+                tool =>
+                    `${tool.enabled ? "🟢" : "⚪"} ${tool.name}`
+            )
+            .join("\n");
+
+
+        addMessage(
+            "🛠️ KAIRA Tools\n\n" +
+            names +
+            "\n\nनई tools धीरे-धीरे connect की जाएँगी।",
+            "ai"
+        );
+
+    }
+);
+
+
+/* =====================================================
+   WEB BUTTON
+===================================================== */
+
+webBtn.addEventListener(
+    "click",
+    function() {
+
+        addMessage(
+            "🌐 Live Web architecture तैयार है। अगली backend layer में real web search + sources connect होंगे।",
+            "ai"
+        );
+
+    }
+);
+
+
+/* =====================================================
+   PERMISSION FOUNDATION
+===================================================== */
+
+const KAIRA_PERMISSIONS = {
+
+    camera: false,
+
+    microphone: false,
+
+    screen: false,
+
+    location: false,
+
+    notifications: false,
+
+    computerActions: false
+
+};
+
+
+function setPermission(
+    name,
+    value
+) {
+
+    if (
+        Object.prototype.hasOwnProperty.call(
+            KAIRA_PERMISSIONS,
+            name
+        )
+    ) {
+
+        KAIRA_PERMISSIONS[name] =
+            Boolean(value);
+
+    }
+
+}
+
+
+/* =====================================================
+   STATUS
+===================================================== */
+
+function getKairaStatus() {
+
+    return {
+
+        online: true,
+
+        userId:
+            KAIRA_USER_ID,
+
+        permissions:
+            KAIRA_PERMISSIONS,
+
+        tools:
+            KAIRA_TOOLS,
+
+        vision:
+            true,
+
+        voice:
+            true,
+
+        memory:
+            true
+
+    };
+
+}
+
+
+/* =====================================================
+   GLOBAL KAIRA OBJECT
+===================================================== */
+
+window.KAIRA = {
+
+    ...window.KAIRA,
+
+    status:
+        getKairaStatus,
+
+    camera:
+        openCamera,
+
+    screen:
+        captureScreen,
+
+    analyzeImage,
+
+    tools:
+        KAIRA_TOOLS,
+
+    permissions:
+        KAIRA_PERMISSIONS
+
+};
+
+
+/* =====================================================
+   FINAL STARTUP MESSAGE
+===================================================== */
+
+console.log(
+    "KAIRA AI Core initialized."
+);
+
+console.log(
+    "KAIRA status:",
+    getKairaStatus()
+);
+
+</script>
+
+</body>
+</html>
 </body>
 </html>
