@@ -818,6 +818,1047 @@
     - Web foundation
     - Permissions
 -->
+<script>
 
+/* =====================================================
+   KAIRA CORE — PART 2
+===================================================== */
+
+const API_URL = "/api/chat";
+
+const KAIRA_USER_ID =
+    localStorage.getItem("kairaUserId") ||
+    "kaira-user";
+
+localStorage.setItem(
+    "kairaUserId",
+    KAIRA_USER_ID
+);
+
+
+/* =====================================================
+   ELEMENTS
+===================================================== */
+
+const chat =
+    document.getElementById("chat");
+
+const welcome =
+    document.getElementById("welcome");
+
+const input =
+    document.getElementById("messageInput");
+
+const sendBtn =
+    document.getElementById("sendBtn");
+
+const micBtn =
+    document.getElementById("micBtn");
+
+const cameraBtn =
+    document.getElementById("cameraBtn");
+
+const screenBtn =
+    document.getElementById("screenBtn");
+
+const voiceBtn =
+    document.getElementById("voiceBtn");
+
+const webBtn =
+    document.getElementById("webBtn");
+
+const toolsBtn =
+    document.getElementById("toolsBtn");
+
+const menuBtn =
+    document.getElementById("menuBtn");
+
+
+/* =====================================================
+   CHAT HISTORY
+===================================================== */
+
+let conversation = [];
+
+
+/* =====================================================
+   WEATHER
+===================================================== */
+
+let weatherData = null;
+
+
+/* =====================================================
+   TYPING / THINKING
+===================================================== */
+
+let thinkingElement = null;
+
+
+/* =====================================================
+   ADD MESSAGE
+===================================================== */
+
+function addMessage(
+    text,
+    role = "ai"
+) {
+
+    if (welcome) {
+        welcome.style.display = "none";
+    }
+
+
+    const row =
+        document.createElement("div");
+
+    row.className =
+        `message-row ${role}`;
+
+
+    const bubble =
+        document.createElement("div");
+
+    bubble.className =
+        `message ${role}`;
+
+
+    const label =
+        document.createElement("div");
+
+    label.className =
+        "message-label";
+
+    label.textContent =
+        role === "user"
+            ? "YOU"
+            : "KAIRA";
+
+
+    const content =
+        document.createElement("div");
+
+    content.textContent =
+        text;
+
+
+    bubble.appendChild(label);
+
+    bubble.appendChild(content);
+
+    row.appendChild(bubble);
+
+    chat.appendChild(row);
+
+
+    chat.scrollTop =
+        chat.scrollHeight;
+
+
+    conversation.push({
+
+        role:
+            role === "user"
+                ? "user"
+                : "assistant",
+
+        content: text
+
+    });
+
+
+    /*
+     * Keep browser memory small.
+     * Permanent memory will be handled
+     * by the backend/database layer.
+     */
+
+    if (conversation.length > 30) {
+
+        conversation =
+            conversation.slice(-30);
+
+    }
+}
+
+
+/* =====================================================
+   THINKING INDICATOR
+===================================================== */
+
+function showThinking() {
+
+    hideThinking();
+
+
+    const row =
+        document.createElement("div");
+
+    row.className =
+        "message-row ai";
+
+
+    thinkingElement =
+        document.createElement("div");
+
+    thinkingElement.className =
+        "thinking";
+
+
+    thinkingElement.innerHTML = `
+        <span></span>
+        <span></span>
+        <span></span>
+    `;
+
+
+    row.appendChild(
+        thinkingElement
+    );
+
+    chat.appendChild(row);
+
+
+    chat.scrollTop =
+        chat.scrollHeight;
+}
+
+
+function hideThinking() {
+
+    if (
+        thinkingElement &&
+        thinkingElement.parentElement
+    ) {
+
+        thinkingElement
+            .parentElement
+            .remove();
+
+    }
+
+    thinkingElement = null;
+}
+
+
+/* =====================================================
+   API REQUEST
+===================================================== */
+
+async function apiRequest(payload) {
+
+    const response =
+        await fetch(
+            API_URL,
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                },
+
+                body:
+                    JSON.stringify(payload)
+            }
+        );
+
+
+    let data = null;
+
+
+    try {
+
+        data =
+            await response.json();
+
+    } catch {
+
+        throw new Error(
+            "KAIRA server ने valid response नहीं दिया।"
+        );
+
+    }
+
+
+    if (!response.ok || data?.success === false) {
+
+        throw new Error(
+            data?.error ||
+            "KAIRA server error."
+        );
+
+    }
+
+
+    return data;
+}
+
+
+/* =====================================================
+   SEND MESSAGE
+===================================================== */
+
+async function sendMessage() {
+
+    const message =
+        input.value.trim();
+
+
+    if (!message) {
+        return;
+    }
+
+
+    input.value = "";
+
+    autoResize();
+
+
+    addMessage(
+        message,
+        "user"
+    );
+
+
+    showThinking();
+
+
+    try {
+
+        const data =
+            await apiRequest({
+
+                action: "chat",
+
+                userId:
+                    KAIRA_USER_ID,
+
+                message,
+
+                history:
+                    conversation
+                        .slice(0, -1),
+
+                memories:
+                    getLocalMemories(),
+
+                weather:
+                    weatherData
+
+            });
+
+
+        hideThinking();
+
+
+        addMessage(
+            data.reply ||
+            "मुझे अभी कोई जवाब नहीं मिला।",
+            "ai"
+        );
+
+
+        /*
+         * Future versions:
+         * data.intent
+         * data.tools
+         * data.agent
+         * data.memorySaved
+         * data.sources
+         */
+
+    } catch (error) {
+
+        hideThinking();
+
+
+        addMessage(
+
+            "⚠️ " +
+            (
+                error?.message ||
+                "KAIRA से connection नहीं हो पाया।"
+            ),
+
+            "ai"
+
+        );
+
+    }
+}
+
+
+/* =====================================================
+   ENTER TO SEND
+===================================================== */
+
+input.addEventListener(
+    "keydown",
+    function(event) {
+
+        if (
+            event.key === "Enter" &&
+            !event.shiftKey
+        ) {
+
+            event.preventDefault();
+
+            sendMessage();
+
+        }
+
+    }
+);
+
+
+/* =====================================================
+   AUTO RESIZE
+===================================================== */
+
+function autoResize() {
+
+    input.style.height =
+        "auto";
+
+
+    input.style.height =
+        Math.min(
+            input.scrollHeight,
+            120
+        ) + "px";
+}
+
+
+input.addEventListener(
+    "input",
+    autoResize
+);
+
+
+/* =====================================================
+   SEND BUTTON
+===================================================== */
+
+sendBtn.addEventListener(
+    "click",
+    sendMessage
+);
+
+
+/* =====================================================
+   LOCAL MEMORY
+   -----------------------------------------------------
+   Temporary browser memory only.
+   Permanent database memory comes later.
+===================================================== */
+
+function getLocalMemories() {
+
+    try {
+
+        const saved =
+            localStorage.getItem(
+                "kairaMemories"
+            );
+
+
+        if (!saved) {
+            return [];
+        }
+
+
+        const data =
+            JSON.parse(saved);
+
+
+        return Array.isArray(data)
+            ? data
+            : [];
+
+    } catch {
+
+        return [];
+
+    }
+}
+
+
+/* =====================================================
+   SAVE LOCAL MEMORY
+===================================================== */
+
+function saveLocalMemory(
+    key,
+    value
+) {
+
+    const memories =
+        getLocalMemories();
+
+
+    const existing =
+        memories.find(
+            item =>
+                item.key === key
+        );
+
+
+    if (existing) {
+
+        existing.value =
+            value;
+
+    } else {
+
+        memories.push({
+
+            key,
+            value
+
+        });
+
+    }
+
+
+    localStorage.setItem(
+        "kairaMemories",
+        JSON.stringify(
+            memories.slice(-50)
+        )
+    );
+}
+
+
+/* =====================================================
+   BASIC MEMORY DETECTION
+===================================================== */
+
+function detectLocalMemory(
+    message
+) {
+
+    const text =
+        message.trim();
+
+
+    /*
+     * Name
+     */
+
+    const nameMatch =
+        text.match(
+            /(?:मेरा नाम|my name is)\s+(.+)/i
+        );
+
+
+    if (nameMatch) {
+
+        saveLocalMemory(
+            "name",
+            nameMatch[1].trim()
+        );
+
+        return;
+
+    }
+
+
+    /*
+     * Remember this
+     */
+
+    const rememberMatch =
+        text.match(
+            /(?:याद रखना|याद रखो|remember this)\s*[:\-]?\s*(.+)/i
+        );
+
+
+    if (rememberMatch) {
+
+        saveLocalMemory(
+            "important",
+            rememberMatch[1].trim()
+        );
+
+    }
+}
+
+
+/* =====================================================
+   RUN MEMORY DETECTION BEFORE SEND
+===================================================== */
+
+const originalSendMessage =
+    sendMessage;
+
+
+sendMessage = async function() {
+
+    const message =
+        input.value.trim();
+
+
+    if (message) {
+
+        detectLocalMemory(
+            message
+        );
+
+    }
+
+
+    return originalSendMessage();
+
+};
+
+
+/* =====================================================
+   VOICE RECOGNITION
+===================================================== */
+
+let recognition = null;
+
+let listening = false;
+
+
+function startVoiceRecognition() {
+
+    const SpeechRecognition =
+        window.SpeechRecognition ||
+        window.webkitSpeechRecognition;
+
+
+    if (!SpeechRecognition) {
+
+        addMessage(
+            "इस browser में Voice Recognition उपलब्ध नहीं है। Chrome इस्तेमाल करें।",
+            "ai"
+        );
+
+        return;
+
+    }
+
+
+    if (listening) {
+
+        if (recognition) {
+            recognition.stop();
+        }
+
+        return;
+
+    }
+
+
+    recognition =
+        new SpeechRecognition();
+
+
+    recognition.lang =
+        "hi-IN";
+
+
+    recognition.continuous =
+        false;
+
+
+    recognition.interimResults =
+        true;
+
+
+    listening = true;
+
+
+    micBtn.textContent =
+        "🔴";
+
+
+    recognition.onresult =
+        function(event) {
+
+            let transcript = "";
+
+
+            for (
+                let i = event.resultIndex;
+                i < event.results.length;
+                i++
+            ) {
+
+                transcript +=
+                    event.results[i][0].transcript;
+
+            }
+
+
+            input.value =
+                transcript;
+
+
+            autoResize();
+
+        };
+
+
+    recognition.onend =
+        function() {
+
+            listening = false;
+
+            micBtn.textContent =
+                "🎤";
+
+        };
+
+
+    recognition.onerror =
+        function() {
+
+            listening = false;
+
+            micBtn.textContent =
+                "🎤";
+
+        };
+
+
+    recognition.start();
+
+}
+
+
+micBtn.addEventListener(
+    "click",
+    startVoiceRecognition
+);
+
+
+voiceBtn.addEventListener(
+    "click",
+    startVoiceRecognition
+);
+
+
+/* =====================================================
+   TEXT TO SPEECH
+===================================================== */
+
+function speak(text) {
+
+    if (
+        !("speechSynthesis" in window)
+    ) {
+        return;
+    }
+
+
+    speechSynthesis.cancel();
+
+
+    const clean =
+        String(text)
+            .replace(
+                /[*#_`]/g,
+                ""
+            );
+
+
+    const utterance =
+        new SpeechSynthesisUtterance(
+            clean
+        );
+
+
+    utterance.lang =
+        "hi-IN";
+
+
+    utterance.rate =
+        0.95;
+
+
+    utterance.pitch =
+        1;
+
+
+    speechSynthesis.speak(
+        utterance
+    );
+
+}
+
+
+/* =====================================================
+   DOUBLE CLICK AI MESSAGE = SPEAK
+===================================================== */
+
+chat.addEventListener(
+    "dblclick",
+    function(event) {
+
+        const message =
+            event.target.closest(
+                ".message.ai"
+            );
+
+
+        if (!message) {
+            return;
+        }
+
+
+        const text =
+            message.innerText
+                .replace(
+                    /^KAIRA\s*/i,
+                    ""
+                );
+
+
+        speak(text);
+
+    }
+);
+
+
+/* =====================================================
+   WEATHER
+===================================================== */
+
+async function getWeather() {
+
+    if (
+        !navigator.geolocation
+    ) {
+
+        return null;
+
+    }
+
+
+    return new Promise(
+        resolve => {
+
+            navigator.geolocation.getCurrentPosition(
+
+                async position => {
+
+                    try {
+
+                        const lat =
+                            position.coords.latitude;
+
+                        const lon =
+                            position.coords.longitude;
+
+
+                        const url =
+                            `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code`;
+
+
+                        const response =
+                            await fetch(url);
+
+
+                        const data =
+                            await response.json();
+
+
+                        const current =
+                            data?.current;
+
+
+                        if (!current) {
+
+                            resolve(null);
+
+                            return;
+
+                        }
+
+
+                        const weather = {
+
+                            city:
+                                "Current Location",
+
+                            temperature:
+                                `${current.temperature_2m}°C`,
+
+                            condition:
+                                String(
+                                    current.weather_code
+                                )
+
+                        };
+
+
+                        weatherData =
+                            weather;
+
+
+                        resolve(
+                            weather
+                        );
+
+
+                    } catch {
+
+                        resolve(null);
+
+                    }
+
+                },
+
+
+                () => {
+
+                    resolve(null);
+
+                },
+
+                {
+                    enableHighAccuracy: false,
+
+                    timeout: 5000,
+
+                    maximumAge: 600000
+
+                }
+
+            );
+
+        }
+    );
+
+}
+
+
+/* =====================================================
+   CAMERA / SCREEN
+   -----------------------------------------------------
+   Actual Vision implementation comes in Part 3.
+===================================================== */
+
+cameraBtn.addEventListener(
+    "click",
+    function() {
+
+        addMessage(
+            "📷 Camera Vision अगली layer में activate होगा।",
+            "ai"
+        );
+
+    }
+);
+
+
+screenBtn.addEventListener(
+    "click",
+    function() {
+
+        addMessage(
+            "🖥️ Screen Vision अगली layer में activate होगा।",
+            "ai"
+        );
+
+    }
+);
+
+
+/* =====================================================
+   WEB / TOOLS PLACEHOLDERS
+===================================================== */
+
+webBtn.addEventListener(
+    "click",
+    function() {
+
+        addMessage(
+            "🌐 Live Web engine अगली layer में connect होगा।",
+            "ai"
+        );
+
+    }
+);
+
+
+toolsBtn.addEventListener(
+    "click",
+    function() {
+
+        addMessage(
+            "🛠️ KAIRA Tools/Agents system अगली layer में connect होगा।",
+            "ai"
+        );
+
+    }
+);
+
+
+/* =====================================================
+   MENU
+===================================================== */
+
+menuBtn.addEventListener(
+    "click",
+    function() {
+
+        addMessage(
+            "⚙️ KAIRA settings और permissions system आगे जोड़ा जाएगा।",
+            "ai"
+        );
+
+    }
+);
+
+
+/* =====================================================
+   STARTUP
+===================================================== */
+
+async function initializeKaira() {
+
+    try {
+
+        await getWeather();
+
+    } catch {
+
+        weatherData = null;
+
+    }
+
+}
+
+
+initializeKaira();
+
+
+/* =====================================================
+   DEBUG
+===================================================== */
+
+window.KAIRA = {
+
+    userId:
+        KAIRA_USER_ID,
+
+    send:
+        sendMessage,
+
+    speak,
+
+    weather:
+        () => weatherData,
+
+    memories:
+        getLocalMemories
+
+};
+
+    </script>
 </body>
 </html>
